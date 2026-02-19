@@ -1,11 +1,12 @@
 import streamlit as st
-import requests
 from PIL import Image
 from io import BytesIO
+from google import genai
+from google.genai import errors
 
 # --- 1. Configuración de la interfaz principal ---
 st.set_page_config(
-    page_title="Nano Car Configurator",
+    page_title="Gemini Car Configurator",
     page_icon="🚗",
     layout="wide"
 )
@@ -43,48 +44,45 @@ CAMERA_STYLES = {
     "Estilo Render 3D (Octane)": "3D render style, octane render, unreal engine 5, hyperrealistic"
 }
 
-# --- 3. Configuración de la función de llamada a la API ---
-# AHORA RECIBE LA API KEY COMO PARÁMETRO
-def call_nano_banana_api(constructed_prompt: str, api_key: str) -> Image.Image:
+# --- 3. Configuración de la llamada a la API de Google Gemini ---
+def generate_car_image_gemini(prompt: str, api_key: str) -> Image.Image:
     """
-    Envía el prompt y la clave del usuario al modelo 'Nano Banana'.
+    Envía el prompt al modelo de generación de imágenes de Google (Imagen 3).
     """
-    # Reemplaza esta URL por la de un servicio real (OpenAI, Stable Diffusion, etc.)
-    api_url = "https://api.nanobanana.example.com/v1/generate" 
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "prompt": constructed_prompt,
-        "negative_prompt": "ugly, deformed, bad blurry, poor quality",
-        "resolution": "1024x768",
-        "steps": 30,
-        "guidance_scale": 7.5 
-    }
+    # Inicializar el cliente de Gemini con la clave del usuario
+    client = genai.Client(api_key=api_key)
     
-    response = requests.post(api_url, headers=headers, json=payload, timeout=60)
-    response.raise_for_status()
+    # Llamar al modelo Imagen 3
+    result = client.models.generate_images(
+        model='imagen-3.0-generate-002',
+        prompt=prompt,
+        config=dict(
+            number_of_images=1,
+            aspect_ratio="4:3", # Formato horizontal ideal para coches
+            output_mime_type="image/jpeg",
+        )
+    )
     
-    image_data = BytesIO(response.content)
-    return Image.open(image_data)
-
+    # Extraer los bytes de la primera imagen generada y convertirla a un objeto PIL Image
+    if result.generated_images:
+        image_bytes = result.generated_images[0].image.image_bytes
+        return Image.open(BytesIO(image_bytes))
+    else:
+        raise ValueError("La API no devolvió ninguna imagen.")
 
 # --- Función Principal de la App ---
 def main():
-    st.title("🏎️ Configurador de Coches - Nano Banana Engine")
-    st.markdown("Diseña tu vehículo usando los controles y genera una visualización de alta calidad.")
+    st.title("🏎️ Configurador de Coches - Google Imagen 3")
+    st.markdown("Diseña tu vehículo usando los controles y genera una visualización de alta calidad con la API de Gemini.")
 
     # --- Sidebar para Configuración ---
     with st.sidebar:
         st.header("🔑 Credenciales")
-        # Nuevo campo para que el usuario introduzca su API Key de forma segura
+        # Campo para la API Key de Google Gemini
         user_api_key = st.text_input(
-            "Introduce tu API Key", 
+            "Introduce tu Gemini API Key", 
             type="password", 
-            help="Tu clave se usa solo para esta sesión y no se guarda."
+            help="Consigue tu API key gratis en Google AI Studio."
         )
         
         st.divider()
@@ -106,10 +104,9 @@ def main():
 
     # --- Lógica de Generación ---
     if generate_btn:
-        # Validación: Comprobar si el usuario ha introducido la API Key
         if not user_api_key.strip():
-            st.warning("⚠️ Por favor, introduce tu API Key en el menú lateral antes de generar la imagen.")
-            return # Detiene la ejecución aquí si no hay clave
+            st.warning("⚠️ Por favor, introduce tu Gemini API Key en el menú lateral.")
+            return
 
         # Construcción del Prompt
         model_prompt = CAR_MODELS[selected_model_key]
@@ -119,14 +116,14 @@ def main():
 
         full_prompt = (
             f"A high quality {style_prompt} of a {color_prompt} {model_prompt}, "
-            f"situated in a {env_prompt}. Highly detailed, photorealistic, 8k resolution, automotive photography masterpiece."
+            f"situated in a {env_prompt}. Highly detailed, photorealistic, automotive photography masterpiece."
         )
 
         with st.container():
-            with st.spinner("⚙️ El motor Nano Banana está renderizando tu diseño..."):
+            with st.spinner("⚙️ El motor de Google está renderizando tu diseño... (Puede tardar unos segundos)"):
                 try:
-                    # Llamada a la API PASANDO LA CLAVE DEL USUARIO
-                    generated_image = call_nano_banana_api(full_prompt, user_api_key)
+                    # Llamada a la API de Gemini
+                    generated_image = generate_car_image_gemini(full_prompt, user_api_key)
                     
                     st.success("¡Vehículo renderizado exitosamente!")
                     
@@ -138,13 +135,8 @@ def main():
                              use_container_width=True
                          )
                     
-                except requests.exceptions.ConnectionError:
-                    st.error("⛔ Error de conexión. Verifica que la URL de la API sea correcta y accesible.")
-                except requests.exceptions.HTTPError as http_err:
-                    if response.status_code == 401:
-                        st.error("⛔ Error de Autenticación: Tu API Key parece ser incorrecta o no válida.")
-                    else:
-                        st.error(f"⛔ Error HTTP devuelto por la API: {http_err}")
+                except errors.APIError as api_err:
+                    st.error(f"⛔ Error de la API de Google: Verifica que tu API Key sea correcta. Detalle: {api_err}")
                 except Exception as e:
                     st.error(f"⛔ Se ha producido un error inesperado: {e}")
 
