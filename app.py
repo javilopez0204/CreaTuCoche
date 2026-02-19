@@ -54,7 +54,7 @@ def generate_car_image_gemini(prompt: str, api_key: str) -> Image.Image:
     
     # Llamar al modelo Imagen 3
     result = client.models.generate_images(
-        model='imagen-3.0-fast-generate-001',
+        model='imagegeneration@006',
         prompt=prompt,
         config=dict(
             number_of_images=1,
